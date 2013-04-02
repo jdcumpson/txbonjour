@@ -10,10 +10,10 @@ To use simply,
 
 broadcasting:
 ============
-
+```
 from txbonjour import discovery
 breader = discovery.broadcast(protocol_instance, service_string, port, service_name)
-
+```
 ie.
 from txbonjour import discovery
 proto = discovery.BroadcastProtocol()
