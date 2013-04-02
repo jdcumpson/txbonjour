@@ -9,9 +9,9 @@ Requires pybonjour:
 https://code.google.com/p/pybonjour/
 
 OR
-
+```
 easy_install pybonjour
-
+```
 
 To use simply,
 
