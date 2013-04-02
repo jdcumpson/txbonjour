@@ -8,6 +8,11 @@ A python package that is a Twisted plugin for using the Avahi/Bonjour service fo
 Requires pybonjour:
 https://code.google.com/p/pybonjour/
 
+OR
+
+easy_install pybonjour
+
+
 To use simply,
 
 broadcasting:
