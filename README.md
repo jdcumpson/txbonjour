@@ -5,10 +5,12 @@ Bonjour!
 
 A python package that is a Twisted plugin for using the Avahi/Bonjour service for network discovery.
 
+```
+easy_install txbonjour
+```
+
 Requires pybonjour:
 https://code.google.com/p/pybonjour/
-
-OR
 ```
 easy_install pybonjour
 ```
