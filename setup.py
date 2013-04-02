@@ -22,6 +22,7 @@ setup(
     zip_safe=False,
     url='',
     install_requires=[
+        'pybonjour',
         ],
     #packages=find_packages(exclude=[]),
     include_package_data=True,
