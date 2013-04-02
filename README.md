@@ -11,7 +11,6 @@ To use simply,
 broadcasting:
 ============
 ```
-#!python
 from txbonjour import discovery
 breader = discovery.broadcast(protocol_instance, service_string, port, service_name)
 ```
