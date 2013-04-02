@@ -3,7 +3,7 @@ txbonjour
 
 Bonjour!
 
-A twisted plugin for using the Avahi/Bonjour service for network discovery.
+A python package that is a Twisted plugin for using the Avahi/Bonjour service for network discovery.
 Requires pybonjour.
 
 To use simply,
