@@ -193,7 +193,7 @@ def discover(protocol, regtype, resolve=False, resolve_ip=True, _do_start=True):
     reader = BonjourReader(protocol, sdref)
     return reader
 
-def make_broadcast_service(*args):
+def make_broadcast_service(*args, **kwargs):
     """ 
     Creates a broadcast service via broadcast.
     
@@ -203,10 +203,10 @@ def make_broadcast_service(*args):
     
     @see: http://twistedmatrix.com/documents/12.2.0/core/howto/application.html 
     """
-    reader = broadcast(*args, _do_start=False)
+    reader = broadcast(*args, _do_start=False, **kwargs)
     return BonjourService(reader)
 
-def make_discover_service(*args):
+def make_discover_service(*args, **kwargs):
     """ 
     Creates a discover service via discover.
     
@@ -215,6 +215,6 @@ def make_discover_service(*args):
     
     @see: http://twistedmatrix.com/documents/12.2.0/core/howto/application.html 
     """
-    reader = discover(*args, _do_start=False)
+    reader = discover(*args, _do_start=False, **kwargs)
     return BonjourService(reader)
 
