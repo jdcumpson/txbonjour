@@ -16,7 +16,7 @@ from txbonjour.service import (BonjourService, BonjourReader,
 
 class BroadcastProtocol(object):
     
-    def registerReceived(self):
+    def registerReceived(self, *args):
         """Override in sub-classes."""
         
     def connectionMade(self):
@@ -174,7 +174,7 @@ def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
         reader.startReading()
     return reader
 
-def discover(protocol, regtype, resolve=False, resolve_ip=True, _do_start=True):
+def discover(protocol, regtype, resolve=True, resolve_ip=True, _do_start=True):
     """
     Make a BonjourReader instance. This instance will monitor the Bonjour
     daemon and call the appropriate method on the protocol object when it is
