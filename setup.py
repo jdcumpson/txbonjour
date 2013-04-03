@@ -24,7 +24,7 @@ setup(
     install_requires=[
         'pybonjour',
         ],
-    #packages=find_packages(exclude=[]),
+    packages=find_packages(exclude=[]),
     include_package_data=True,
     entry_points={'console_scripts': []}
 )
