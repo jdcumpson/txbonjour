@@ -20,7 +20,7 @@ setup(
     author='jdcumpson',
     author_email='cumpsonjd@gmail.com',
     zip_safe=False,
-    url='',
+    url='https://github.com/jdcumpson/txbonjour',
     install_requires=[
         'pybonjour',
         ],
