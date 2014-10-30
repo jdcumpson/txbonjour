@@ -14,6 +14,7 @@ from zope import interface
 from txbonjour.service import (BonjourService, BonjourReader,
                                IBroadcastProtocol, IDiscoverProtocol)
 
+
 class BroadcastProtocol(object):
     
     def registerReceived(self, *args):
@@ -40,12 +41,12 @@ class DiscoverProtocol(object):
         Override in sub-classes.
         """
     
-    def addService(self, service_name, host, port, interface_index ,flags):
+    def addService(self, service_name, host, port, interface_index, flags):
         """
         Override in sub-classes.
         """
         
-    def removeService(self, service_name, host, port, interface_index ,flags):
+    def removeService(self, service_name, host, port, interface_index, flags):
         """
         Override in sub-classes.
         """
@@ -59,6 +60,7 @@ class DiscoverProtocol(object):
         """
         Override in sub-classes.
         """
+
 
 def _resolve(protocol, resolve_ip=True, *args):
     """
@@ -95,6 +97,7 @@ def _resolve(protocol, resolve_ip=True, *args):
     reader = BonjourReader(DiscoverProtocol(), sdref)
     reader.startReading()
     return d
+
 
 def _dispatch(protocol, resolving=False, resolve_ip=True, *args):
     """
@@ -138,7 +141,8 @@ def _dispatch(protocol, resolving=False, resolve_ip=True, *args):
     d.addErrback(lambda res:log.err(res))
     d.addErrback(lambda res: reactor.callLater(0, protocol.resolveError, 
                                                     res, *resolve_args))
-    
+
+
 def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
     """
     Make a BonjourReader instance. A bonjour reader is just like a file 
@@ -146,9 +150,14 @@ def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
     'twisted.internet.interfaces.IReadDescriptor'. This service will
     watch the Bonjour output that corresponds to this service.
     
+    XXX: this should probably actually disconnect readers in more of a one-off
+         broadcast type message. ie. reader.stopReading() after finished. To
+         be consistent with the behaviour of the discover method, it does not.
+
     @param protocol: A protocol implementing IBroadcastProtocl
     @param regtype: A string for the mDNS registry via pybonjour
     @param name: The name of your service
+    @param port: The port that your service is listening on
     @param record: A pybonjour.TXTRecord instance (mDNS record)
     @param _do_start: if True, starts immediately.
     @return: a BonjourReader instance
@@ -174,6 +183,7 @@ def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
         reader.startReading()
     return reader
 
+
 def discover(protocol, regtype, resolve=True, resolve_ip=True, _do_start=True):
     """
     Make a BonjourReader instance. This instance will monitor the Bonjour
@@ -193,10 +203,14 @@ def discover(protocol, regtype, resolve=True, resolve_ip=True, _do_start=True):
     reader = BonjourReader(protocol, sdref)
     return reader
 
-def make_broadcast_service(*args, **kwargs):
+
+def connectBonjour(*args, **kwargs):
     """ 
     Creates a broadcast service via broadcast.
     
+    @note: this is a shortcut if you are not using twisted.application.service.
+            See tap.py.
+    @see: txbonjour.tap
     @param args: All the same args as broadcast 
     @return: a BonjourService instance.
     @rtype: txbonjour.service.BonjourService
@@ -206,10 +220,14 @@ def make_broadcast_service(*args, **kwargs):
     reader = broadcast(*args, _do_start=False, **kwargs)
     return BonjourService(reader)
 
-def make_discover_service(*args, **kwargs):
+
+def listenBonjour(*args, **kwargs):
     """ 
     Creates a discover service via discover.
     
+    @note: this is a shortcut if you are not using twisted.application.service.
+            See tap.py.
+    @see: txbonjour.tap
     @return: a BonjourService instance.
     @rtype: txbonjour.service.BonjourService
     
@@ -218,3 +236,7 @@ def make_discover_service(*args, **kwargs):
     reader = discover(*args, _do_start=False, **kwargs)
     return BonjourService(reader)
 
+
+# backwards compat
+make_broadcast_service = connectBonjour
+make_discover_service = listenBonjour
