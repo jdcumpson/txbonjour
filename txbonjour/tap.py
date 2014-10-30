@@ -68,9 +68,14 @@ class ServiceMaker(object):
             twisted.application.service.IService implementor.
 
         """
+        service_name = options.get('service-name')
+        resolve = options.get('resolve-domains')
+        port = options.get('port')
+        registry = options.get('registration')
+        service_name = options.get('service-name')
 
         s = MultiService()
-        s.setName('txbonjour')
+        s.setName('txbonjour-%s' % (service_name,))
 
         logging_proto = LoggingProtocol()
 
@@ -79,12 +84,6 @@ class ServiceMaker(object):
 
         if discovery_protocol is None:
             discovery_protocol = logging_proto
-
-        resolve = options.get('resolve-domains')
-        port = options.get('port')
-        registry = options.get('registration')
-        service_name = options.get('service-name')
-
 
         discover_service = discovery.listenBonjour(discovery_protocol,
                                                    registry,
