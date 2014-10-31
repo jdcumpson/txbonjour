@@ -1,6 +1,6 @@
 """ A standard twisted tap file for an exposed service for txbonjour"""
 
-from zope.interface import implements
+from zope.interface import implements, implementer
 from twisted.python import log, usage
 from twisted.plugin import IPlugin
 from twisted.internet import reactor
@@ -11,8 +11,6 @@ from txbonjour import version, name, description, service, discovery
 
 class LoggingProtocol(discovery.BroadcastProtocol):
     """ I am a logging protocol. I do nothing but log what I receive. """
-
-    implements(service.IDiscoverProtocol, service.IBroadcastProtocol)
 
     def registerReceived(self, *args):
         log.msg('now broadcasting: %r' % (args,))
@@ -27,18 +25,14 @@ class LoggingProtocol(discovery.BroadcastProtocol):
         log.msg('browseError: %r' % (args,))
 
     def resolveError(self, err, *args):
-        log.msg('resolveError: %r' % (args,))
-
-
-falses = ['false', '0', 'f', 'n']
+        log.msg('resolveError: %s - %r' % (err, args,))
 
 
 class Options(usage.Options):
 
     optFlags = [
         ['resolve-domains', 'n', 'Resolve FQDM to ip addresses before '\
-                                    'reporting, acceptable false '\
-                                    'values are: %s' % (falses,)]
+                                    'reporting']
     ]
     optParameters = [
         ['port', 'p', 9898, 'The port to broadcast to bonjour clients to '\

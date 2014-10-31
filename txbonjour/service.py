@@ -9,7 +9,7 @@ import pybonjour
 from zope import interface
 from twisted.internet import interfaces, abstract
 from twisted.internet.main import CONNECTION_DONE
-from twisted.internet import protocol
+from twisted.internet import protocol, abstract
 from twisted.application.internet import _VolatileDataService
 from twisted.python import log, failure
 
@@ -59,7 +59,7 @@ class IDiscoverProtocol(IBonjourProtocol):
         """
         
 
-class BonjourReader(object):
+class BonjourReader(abstract.FileDescriptor):
     """ 
     A service reader is a FileDescriptor-like object that is specific to reading
     services that use FD to output their data. The service descriptor will
@@ -71,29 +71,29 @@ class BonjourReader(object):
                 current/api/twisted.internet.interfaces.IReactorFDSet.html
     """
     
-    interface.implements(interfaces.IReadDescriptor)
-    
-    connected = 0
-    disconnecting = 0
+    _logstr = None
     
     def __init__(self, protocol, sdref, reactor=None):
         """
         @param sdref: a service descriptor reference
         """
-#        abstract.FileDescriptor.__init__(self, reactor)
         if not reactor:
             from twisted.internet import reactor
             self.reactor = reactor
             
         self.sdref = sdref
         self.protocol = protocol
+        self.protocol.reader = self
+        self.setLogStr()
         
     def doRead(self):
         """ 
         Doesn't return data like normal FD's because it processes the
         information and calls any registered callbacks.
         """
-        pybonjour.DNSServiceProcessResult(self.sdref)
+        # XXX: there is no guarantee that this isn't blocking but I hope it is
+        #        Otherwise, need to make a process runner instead.
+        return pybonjour.DNSServiceProcessResult(self.sdref)
         
     def startReading(self):
         self.reactor.addReader(self)
@@ -125,11 +125,14 @@ class BonjourReader(object):
         if self.connected and not self.disconnecting:
             self.disconnecting = 1
             self.stopReading()
-            self.reactor.callLater(0, self.connectionLost,
-                                   failure.Failure(CONNECTION_DONE))
+            self.connectionLost(failure.Failure(CONNECTION_DONE))
             
+    def setLogStr(self):
+        logPrefix = self._getLogPrefix(self.protocol)
+        self._logstr = '%s (Bonjour)' % logPrefix
+
     def logPrefix(self):
-        return self.__class__.__name__
+        return self._logstr
 
 
 class BonjourService(_VolatileDataService):

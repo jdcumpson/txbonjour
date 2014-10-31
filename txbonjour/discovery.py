@@ -9,14 +9,20 @@ Created on 2013-02-09
 import pybonjour
 from twisted.python import log
 from twisted.internet import reactor, defer
+from twisted.internet.protocol import Protocol
 from zope import interface
 
 from txbonjour.service import (BonjourService, BonjourReader,
                                IBroadcastProtocol, IDiscoverProtocol)
 
 
-class BroadcastProtocol(object):
+class BroadcastProtocol(Protocol):
     
+    interface.implements(IBroadcastProtocol)
+
+    def logPrefix(self):
+        return self.__class__.__name__
+
     def registerReceived(self, *args):
         """Override in sub-classes."""
         
@@ -27,7 +33,7 @@ class BroadcastProtocol(object):
         """Override in sub-classes."""
 
 
-class DiscoverProtocol(object):
+class DiscoverProtocol(Protocol):
     
     interface.implements(IDiscoverProtocol)
     
@@ -68,7 +74,6 @@ def _resolve(protocol, resolve_ip=True, *args):
     """
     d = defer.Deferred()
     
-    
     if resolve_ip:
         def _cb(ip, args):
             args[5] = ip
@@ -87,14 +92,17 @@ def _resolve(protocol, resolve_ip=True, *args):
         error_code = args[3]
             
         if error_code != pybonjour.kDNSServiceErr_NoError:
-            d.errback(args)
+            err = pybonjour.BonjourError(error_code)
+            d.errback(err)
+            return
+
         d.callback(args)
     
     args = list(args)
     args.append(cb)
         
     sdref = pybonjour.DNSServiceResolve(*args)
-    reader = BonjourReader(DiscoverProtocol(), sdref)
+    reader = BonjourReader(protocol, sdref)
     reader.startReading()
     return d
 
@@ -105,10 +113,10 @@ def _dispatch(protocol, resolving=False, resolve_ip=True, *args):
     """
     # cheaply identify if it's a broadcast or discovery
     if len(args) == 6:
+        # 6 arguments is the callback interface for broadcast
         sdref, flags, interface_index, service_name, registry_type, \
             reply_domain = args
-        error_code = pybonjour.kDNSServiceErr_NoError
-        return reactor.callLater(0, protocol.registerReceived, *args)
+        return protocol.registerReceived(*args)
     
     else:
         sdref, flags, interface_index, error_code, service_name, registry_type, \
@@ -119,28 +127,25 @@ def _dispatch(protocol, resolving=False, resolve_ip=True, *args):
         if error_code != pybonjour.kDNSServiceErr_NoError:
             args = list(args)
             error_code = args.pop(3)
-            reactor.callLater(0, protocol.browseError, error_code, *args)
+            protocol.browseError(error_code, *args)
         elif not flags & pybonjour.kDNSServiceFlagsAdd:
-            reactor.callLater(0, protocol.removeService,
-                                args[4], args[5], args[6], args[2], args[1],
-                                )
+            protocol.removeService(args[4], args[5], args[6], args[2], args[1],)
         elif flags & pybonjour.kDNSServiceFlagsAdd:
-            reactor.callLater(0, protocol.addService, 
-                              args[4], args[5], args[6], args[2], args[1],
-                              )
-            
+            protocol.addService(args[4], args[5], args[6], args[2], args[1],)
+
+    # do not resolve ips from FQDM just callback the responses
     if not resolving:
         return _call(*args)
     
+    # resolve ips before we send messages because the client has requested it
     temp = list(args)
     temp.pop(3)
     resolve_args = temp[2:]
     resolve_args.insert(0, 0)
+
     d = defer.maybeDeferred(_resolve, protocol, resolve_ip, *resolve_args)
     d.addCallback(lambda res:_call(*res))
-    d.addErrback(lambda res:log.err(res))
-    d.addErrback(lambda res: reactor.callLater(0, protocol.resolveError, 
-                                                    res, *resolve_args))
+    d.addErrback(lambda res: protocol.resolveError(res, *resolve_args))
 
 
 def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
@@ -171,7 +176,6 @@ def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
         record = pybonjour.TXTRecord({})
     def cb(*args):
         _dispatch(protocol, False, False, *args)
-#    cb = lambda *res:_dispatch(protocol, False, *res)
     sdref = pybonjour.DNSServiceRegister(regtype=regtype,
                                          port=port,
                                          callBack=cb,
