@@ -81,7 +81,7 @@ class ServiceMaker(object):
 
         discover_service = discovery.listenBonjour(discovery_protocol,
                                                    registry,
-                                                   resolve_ip=resolve,
+                                                   resolve_ips=resolve,
                                                    )
         discover_service.setName('discovery')
         discover_service.setServiceParent(s)

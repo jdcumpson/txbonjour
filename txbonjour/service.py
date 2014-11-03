@@ -93,7 +93,7 @@ class BonjourReader(abstract.FileDescriptor):
         """
         # XXX: there is no guarantee that this isn't blocking but I hope it is
         #        Otherwise, need to make a process runner instead.
-        return pybonjour.DNSServiceProcessResult(self.sdref)
+        pybonjour.DNSServiceProcessResult(self.sdref)
         
     def startReading(self):
         self.reactor.addReader(self)

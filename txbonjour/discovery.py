@@ -23,7 +23,7 @@ class BroadcastProtocol(Protocol):
     def logPrefix(self):
         return self.__class__.__name__
 
-    def registerReceived(self, *args):
+    def registerReceived(self, service):
         """Override in sub-classes."""
         
     def connectionMade(self):
@@ -37,22 +37,22 @@ class DiscoverProtocol(Protocol):
     
     interface.implements(IDiscoverProtocol)
     
-    def browseError(self, error_code, *args):
+    def browseError(self, error):
         """
         Override in sub-classes.
         """
         
-    def resolveError(self, error, *args):
+    def resolveError(self, error):
         """
         Override in sub-classes.
         """
     
-    def addService(self, service_name, host, port, interface_index, flags):
+    def addService(self, service):
         """
         Override in sub-classes.
         """
         
-    def removeService(self, service_name, host, port, interface_index, flags):
+    def removeService(self, service):
         """
         Override in sub-classes.
         """
@@ -68,84 +68,111 @@ class DiscoverProtocol(Protocol):
         """
 
 
-def _resolve(protocol, resolve_ip=True, *args):
+class BonjourServiceInformation(object):
+    """ Represents a service that is available via the avahi/bonjour framework.
+        The class provides a better way to get more details about a service as
+        a convenience because there were too many variables being passed
+        directly. This class makes it easier to group up information about the
+        BonjourService.
     """
-    Resolve browsed services then return them.
-    """
-    d = defer.Deferred()
-    
-    if resolve_ip:
-        def _cb(ip, args):
-            args[5] = ip
-            return args
-        
-        def _resolve_ip(args):
-            fqdm = args[5]
-            args = list(args)
-            d = reactor.resolve(fqdm)
-            d.addCallback(_cb, args)
-            return d
-        d.addCallback(_resolve_ip)
-    
-    def cb(*args):
-        reader.loseConnection()
-        error_code = args[3]
+
+    resolved = False
+
+    def __init__(self, name, registry_type, reply_domain,
+                 flags, interface_index, sdref):
+        self.name = name
+        self.registry_type = registry_type
+        self.reply_domain = reply_domain
+        self.flags = flags
+        self.interface_index = interface_index
+        self.sdref = sdref
+        self.ip = None
+        self.port = None
+        self.txt_record = None
+        self.fullname = None
+        self.lock = defer.DeferredLock()
+
+    def resolve(self):
+        if self.resolved:
+            return defer.succeed(self)
+
+        d = resolve(self.interface_index,
+                    self.name,
+                    self.registry_type,
+                    self.reply_domain,
+                    )
+        def _update_properties(result):
+            self.fullname, self.fqdn, self.port, self.txt_record = result
+            self.resolved = True
+            return self
             
-        if error_code != pybonjour.kDNSServiceErr_NoError:
-            err = pybonjour.BonjourError(error_code)
-            d.errback(err)
-            return
+        d.addCallback(_update_properties)
+        return d
 
-        d.callback(args)
-    
-    args = list(args)
-    args.append(cb)
-        
-    sdref = pybonjour.DNSServiceResolve(*args)
-    reader = BonjourReader(protocol, sdref)
-    reader.startReading()
-    return d
+    def resolve_ip(self, resolve=True,):
+        """ Resolve the ip address of this services FQDN. If resolve is True
+            (default=True) then also resolve the service fully before trying
+            to resolve the ip. Otherwise raises an exception.
 
+        """
+        if self.ip:
+            return defer.succeed(self.ip)
 
-def _dispatch(protocol, resolving=False, resolve_ip=True, *args):
-    """
-    Dispatches callbacks from the pybonjour module interface to our protocol.
-    """
-    # cheaply identify if it's a broadcast or discovery
-    if len(args) == 6:
-        # 6 arguments is the callback interface for broadcast
-        sdref, flags, interface_index, service_name, registry_type, \
-            reply_domain = args
-        return protocol.registerReceived(*args)
-    
-    else:
-        sdref, flags, interface_index, error_code, service_name, registry_type, \
-            reply_domain = args
-    
-    def _call(*args):
-        error_code = args[3]
-        if error_code != pybonjour.kDNSServiceErr_NoError:
-            args = list(args)
-            error_code = args.pop(3)
-            protocol.browseError(error_code, *args)
-        elif not flags & pybonjour.kDNSServiceFlagsAdd:
-            protocol.removeService(args[4], args[5], args[6], args[2], args[1],)
-        elif flags & pybonjour.kDNSServiceFlagsAdd:
-            protocol.addService(args[4], args[5], args[6], args[2], args[1],)
+        if not resolve and not self.resolved:
+            return defer.fail(Exception('Cannot resolve an ip address of an unresolved service'))
 
-    # do not resolve ips from FQDM just callback the responses
-    if not resolving:
-        return _call(*args)
-    
-    # resolve ips before we send messages because the client has requested it
-    temp = list(args)
-    temp.pop(3)
-    resolve_args = temp[2:]
-    resolve_args.insert(0, 0)
+        if self.resolved:
+            d = defer.succeed(self)
+        else:
+            d = self.resolve()
 
-    d = defer.maybeDeferred(_resolve, protocol, resolve_ip, *resolve_args)
-    d.addCallback(lambda res:_call(*res))
-    d.addErrback(lambda res: protocol.resolveError(res, *resolve_args))
+        def _update_properties(result):
+            self.ip = result
+            return self.ip
+
+        d.addCallback(lambda _: reactor.resolve(self.fqdn))
+        d.addCallback(_update_properties)
+        return d
+
+    def __repr__(self):
+        info = {
+                'name': self.name,
+                'registry': self.registry_type,
+                'reply_domain': self.reply_domain,
+                'resolved': self.resolved,
+                'record': self.txt_record,
+                'flags': self.flags,
+                }
+
+        if self.resolved:
+            info['port'] = self.port
+            if self.ip:
+                info['ip'] = self.ip
+
+        infostr = []
+        for key, val in info.iteritems():
+            if isinstance(val, (basestring,)):
+                val = '"%s"' % (val,)
+            infostr.append('%s=%s' % (key, val,))
+
+        infostr = '(%s)' % (', '.join(infostr),)
+        return '<%s %s>' % (self.__class__.__name__, infostr,)
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+        properties = ('name', 'registry_type', 'reply_domain', 'flags',)
+        try:
+            for prop in properties:
+                if getattr(self, prop) != getattr(other, prop):
+                    return False
+        except:
+            return False
+
+        return True
+
+    def __neq__(self, other):
+        return not self.__eq__(other)
 
 
 def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
@@ -172,10 +199,20 @@ def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
     @see: http://http://twistedmatrix.com/documents/current/api/
             twisted.internet.interfaces.IReactorFDSet.html
     """
+    # txt record can keep track of the mDNS changes
     if record is None:
         record = pybonjour.TXTRecord({})
-    def cb(*args):
-        _dispatch(protocol, False, False, *args)
+
+    def cb(sdref, flags, interface_index, service_name, registry_type,
+           reply_domain):
+        info = BonjourServiceInformation(service_name,
+                                         registry_type,
+                                         reply_domain,
+                                         flags,
+                                         interface_index,
+                                         sdref,)
+        protocol.registerReceived(info)
+
     sdref = pybonjour.DNSServiceRegister(regtype=regtype,
                                          port=port,
                                          callBack=cb,
@@ -183,12 +220,18 @@ def broadcast(protocol, regtype, port, name, record=None, _do_start=True):
                                          name=name,
                                          )
     reader = BonjourReader(protocol, sdref)
+
+    # if true start reading immediately
     if _do_start:
         reader.startReading()
+
     return reader
 
 
-def discover(protocol, regtype, resolve=True, resolve_ip=True, _do_start=True):
+_registered_services = []
+
+
+def discover(protocol, regtype, resolve=True, resolve_ips=False, _do_start=True):
     """
     Make a BonjourReader instance. This instance will monitor the Bonjour
     daemon and call the appropriate method on the protocol object when it is
@@ -196,16 +239,136 @@ def discover(protocol, regtype, resolve=True, resolve_ip=True, _do_start=True):
     
     @param protocol: A protocol implementing IDiscoverProtocol
     @param regtype: A string for the mDNS registry via pybonjour
-    @param resolve: Perform a resolve on the service address before exposing it
-    @param resolve_ip: If resolve, and if True, get IP from FQDM
+    @param resolve: Resolve the avahi/bonjour service details automatically
+                    (default=True)
+    @param resolve_ips: Resolve FQDN to ip address automatically (default=False)
     @param _do_start: if True, starts immediately
     @returns: A BonjourReader instance
     @rtype: txbonjour.service.BonjourReader
     """
-    cb = lambda *res:_dispatch(protocol, resolve, resolve_ip, *res)
-    sdref = pybonjour.DNSServiceBrowse(regtype=regtype, callBack=cb)
+    
+    def _callback(sdref, flags, interface_index, error_code, service_name,
+                  registry_type, reply_domain):
+        
+        # if there is an error code call it
+        if error_code != pybonjour.kDNSServiceErr_NoError:
+            err = pybonjour.BonjourError(error_code)
+            protocol.browseError(err)
+            return
+        
+        # create the service object
+        info = BonjourServiceInformation(service_name,
+                                         registry_type,
+                                         reply_domain,
+                                         flags,
+                                         interface_index,
+                                         sdref,)
+
+
+        # try to find an equivalent service declaration and use it
+        index = -1
+        for n, s in enumerate(_registered_services):
+            if info == s:
+                index = n
+                break
+
+        # if an equivalent was found, use it instead
+        if index > -1:
+            info = _registered_services[index]
+
+        # otherwise, add the new one to the list
+        else:
+            _registered_services.append(info)
+
+        # logical and to determine if it was an addition or removal
+        add_service = flags & pybonjour.kDNSServiceFlagsAdd
+
+        def lock_acquired(_):
+            action = 'add' if add_service else 'remove'
+#             log.msg('%s service: %s' % (action, info,))
+
+            # if we are removing a service we can't resolve it because it is no
+            # longer available
+            if not add_service:
+                return info
+
+            # resolve the ip of the service when it is resolved
+            if resolve_ips:
+#                 log.msg('resolving ip address for: %s' % (info,))
+                return info.resolve_ip()
+
+            # just resolve the service with the FQDN
+            if resolve:
+#                 log.msg('resolving service: %s' % (info,))
+                d.addCallback(lambda _: info.resolve())
+
+            return info
+
+        # acquire the lock for this service (ensure sync'd add/remove)
+        d = info.lock.acquire()
+        d.addCallback(lock_acquired)
+
+        def resolve_cb(result):
+            if add_service:
+                method = protocol.addService
+
+            else:
+                # remove the service from the list before calling back the proto
+                _registered_services.remove(info)
+                method = protocol.removeService
+
+            # call it with the reader instance to make things cleaner
+            log.callWithLogger(reader, method, info)
+
+        d.addCallbacks(resolve_cb, lambda f: protocol.resolveError(f.value))
+        d.addErrback(lambda f: protocol.browseError(f.value))
+        d.addBoth(lambda _: info.lock.release())
+        
+    sdref = pybonjour.DNSServiceBrowse(regtype=regtype, callBack=_callback)
     reader = BonjourReader(protocol, sdref)
     return reader
+
+
+def resolve(interface_index, service_name, registry_type, reply_domain,
+            protocol=None):
+    """ Resolve a service based on the interface index, service name,
+        registry type, and reply domain. If you already have a BonjourService
+        you should call BonjourService.resolve(). This method is for evaluating
+        string based arguments.
+
+        Typical use cases you will not need this method, but it is available
+        to use if needed.
+    """
+    
+    d = defer.Deferred()
+
+    def cb(sdref, flags, interface_index, error_code, service_full_name,
+           fqdn, port, txt_record):
+        # stop reading the bonjour dns record because the result has been
+        # obtained
+        reader.stopReading()
+
+        # if there is an error, errback it and exit function
+        if error_code != pybonjour.kDNSServiceErr_NoError:
+            d.errback(pybonjour.BonjourError(error_code))
+            return
+
+        # return a tuple with the new details for the service
+        d.callback((service_full_name, fqdn, port, txt_record,))
+
+    sdref = pybonjour.DNSServiceResolve(0,
+                                        interface_index,
+                                        service_name,
+                                        registry_type,
+                                        reply_domain,
+                                        cb
+                                        )
+    if protocol is None:
+        protocol = DiscoverProtocol()
+
+    reader = BonjourReader(protocol, sdref)
+    reader.startReading()
+    return d
 
 
 def connectBonjour(*args, **kwargs):

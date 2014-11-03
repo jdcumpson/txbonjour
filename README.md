@@ -34,7 +34,7 @@ or
 ```
 from txbonjour import discovery
 proto = disocovery.BroadcastProtocol()
-s = discovery.make_broadcast_service(proto, '_examples._tcp', 9999, 'Example')
+s = discovery.connectBonjour(proto, '_examples._tcp', 9999, 'Example')
 ```
 
 discovering:
@@ -57,7 +57,30 @@ or
 ```
 from txbonjour import discovery
 proto = disocovery.DiscoverProtocol()
-s = discovery.make_discover_service(proto, '_examples._tcp')
+s = discovery.listenBonjour(proto, '_examples._tcp')
+```
+
+usage with tap:
+==============
+
+```
+from txbonjour import tap
+service = tap.makeService()
+service.setName('my-txbonjour-service')
+
+service.setServiceParent(application)
+```
+
+usage from twistd:
+=================
+
+```
+twistd -n txbonjour
+```
+
+to see the help type:
+```
+twistd txbonjour -h
 ```
 
 Adieu!
